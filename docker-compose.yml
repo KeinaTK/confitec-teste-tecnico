@@ -1,0 +1,50 @@
+version: '3.7'
+
+services:
+  api:
+    build:
+      context: .
+    command: python3 src/main.py
+    ports:
+      - 5000:5000
+      - 5137:5137
+    volumes:
+      - .:/api
+    networks:
+      - public
+      - private
+      - lambda-local
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - .env
+
+  db:
+    image: amazon/dynamodb-local:1.18.0
+    hostname: dynamodb
+    volumes:
+      - dynamodb-data:/home/dynamodblocal/data
+    ports:
+      - 8000:8000
+    networks:
+      - public
+      - private
+      - lambda-local
+
+  redis:
+    image: redis:7.0.4-alpine
+    hostname: redis
+    ports:
+      - 6379:6379
+    networks:
+      - public
+      - private
+
+volumes:
+  dynamodb-data:
+
+networks:
+  public:
+  private:
+  lambda-local:
