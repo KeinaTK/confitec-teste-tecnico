@@ -1,29 +1,51 @@
 #!/bin/python3
 
+# ------------------------------------------------------------------------------
+# Imports
+# ------------------------------------------------------------------------------
+
 import multiprocessing
 import os
 
-import requests
-from cache.config import RedisConfig
-from data.dynamo_handler import create_artist, create_database, detail_artist
+import dynamo_handler
+import genius_client
 from flask import Flask, request
 from flask_caching import Cache
-from utils import urljoin
+from redis_config import RedisConfig
 
-MAX_SONG_RETURN = 10
+# ------------------------------------------------------------------------------
+# Functions
+# ------------------------------------------------------------------------------
+
+
+def parse_cache_querystring() -> bool:
+    """Utility function to parse the `cache` querystring parameter"""
+    return request.args.get("cache", "").lower() != "false"
+
+
+# --------------------------------------
+
+
+def skip_cache_if_user_requested() -> bool:
+    """This function returns whether to hit the Redis Cache or not. The checking
+    is realized via the `cache` querystring, which should be:
+        - False, if the user doesn't want to hit cache, or
+        - Empty|Anything else, if the user desires caching.
+    """
+    return not parse_cache_querystring()
+
+
+# ------------------------------------------------------------------------------
+# Application Setup
+# ------------------------------------------------------------------------------
 
 app = Flask(__name__)
+
+# Redis configuration. Gets values from .env file
 app.config.from_object(RedisConfig)
 redis = Cache(app)
 
-GENIUS_HEADERS = {"Authorization": f"Bearer {os.environ.get('GENIUS_BEARER')}"}
-
-GENIUS_BASE_URL = "https://api.genius.com/"
-
-
-def skip_cache_if_user_requested():
-    use_cache = request.args.get("cache", "").lower() != "false"
-    return not use_cache
+# Endpoints --------------------------------------------------------------------
 
 
 @app.route("/artists/<int:artist_id>/")
@@ -31,46 +53,26 @@ def skip_cache_if_user_requested():
 @redis.cached(timeout=60 * 24 * 7, unless=skip_cache_if_user_requested)
 def get_artist_songs(artist_id):
 
-    use_cache = request.args.get("cache", "").lower() != "false"
+    use_cache = parse_cache_querystring()
 
     if not use_cache:
         redis.clear()
 
-    if not use_cache or (artist := detail_artist(artist_id)) is None:
-        artist_name = query_artist_name(artist_id)
-        artist_songs = query_artist_songs(artist_id)
+    if not use_cache or (artist := dynamo_handler.detail_artist(artist_id)) is None:
+        artist_name = genius_client.query_artist_name(artist_id)
+        artist_songs = genius_client.query_artist_songs(artist_id)
 
-        artist = create_artist(artist_id, artist_name, artist_songs)
+        artist = dynamo_handler.create_artist(artist_id, artist_name, artist_songs)
 
     return artist
 
 
-def query_artist_name(artist_id):
-    artist_url = urljoin(GENIUS_BASE_URL, "artists", artist_id)
-    artist_info = requests.get(artist_url, headers=GENIUS_HEADERS).json()
-
-    return artist_info["response"]["artist"]["name"]
-
-
-def query_artist_songs(artist_id):
-    songs_url = urljoin(
-        GENIUS_BASE_URL,
-        "artists",
-        artist_id,
-        "songs",
-        sort="popularity",
-        per_page=MAX_SONG_RETURN,
-    )
-    songs_info = requests.get(songs_url, headers=GENIUS_HEADERS)
-
-    songs_info = songs_info.json()["response"]["songs"]
-    return [song["title"] for song in songs_info]
-
+# --------------------------------------
 
 if __name__ == "__main__":
 
     if multiprocessing.current_process().pid > 1:
-        create_database()
+        dynamo_handler.create_database()
 
         if os.environ.get("FLASK_DEBUG"):
             import debugpy

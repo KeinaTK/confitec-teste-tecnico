@@ -1,17 +1,27 @@
+# ------------------------------------------------------------------------------
+# Imports & Constants
+# ------------------------------------------------------------------------------
+
+import os
 import uuid
 
 import boto3
 
 DYNAMODB_CONF = dict(
-    endpoint_url="http://dynamodb:8000",
-    region_name="us-west-2",
-    aws_access_key_id="somekey",
-    aws_secret_access_key="somesecret",
-    aws_session_token="somesession",
+    # Defaults to amazon/dynamodb-local
+    endpoint_url=os.environ.get("DYNAMODB_ENDPOINT", "http://dynamodb:8000"),
+    region_name=os.environ.get("REGION_NAME", ""),
+    aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", ""),
+    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
+    aws_session_token=os.environ.get("AWS_SESSION_TOKEN", ""),
 )
 
 dynamodb_client = boto3.client("dynamodb", **DYNAMODB_CONF)
 dynamodb_resource = boto3.resource("dynamodb", **DYNAMODB_CONF)
+
+# ------------------------------------------------------------------------------
+# Functions
+# ------------------------------------------------------------------------------
 
 
 def create_database():
@@ -27,13 +37,17 @@ def create_database():
     )
 
 
-def detail_artist(artist_id: int) -> "dict | None":
-    print("ARTIST_IDD", artist_id)
+# --------------------------------------
 
+
+def detail_artist(artist_id: int) -> "dict | None":
     table = dynamodb_resource.Table("Book_Songs")
     response = table.get_item(Key={"artistId": artist_id})
 
     return response.get("Item", None)
+
+
+# --------------------------------------
 
 
 def create_artist(artist_id: int, name: str, songs: list[str]) -> dict:
@@ -50,6 +64,8 @@ def create_artist(artist_id: int, name: str, songs: list[str]) -> dict:
 
     return item
 
+
+# --------------------------------------
 
 if __name__ == "__main__":
     create_database()
