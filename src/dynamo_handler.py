@@ -63,9 +63,3 @@ def create_artist(artist_id: int, name: str, songs: list[str]) -> dict:
     table.put_item(Item=item)
 
     return item
-
-
-# --------------------------------------
-
-if __name__ == "__main__":
-    create_database()
